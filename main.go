@@ -110,51 +110,81 @@ func main() {
 			req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36")
 			resp, err2 := client.Do(req)
 
-			// Parsing json
-			content, err3 := (ioutil.ReadAll(resp.Body))
-			var json_content map[string]interface{}
-			json.Unmarshal([]byte(content), &json_content)
+// Parsing json
+content, err3 := ioutil.ReadAll(resp.Body)
+resp.Body.Close()
 
-			// Checking for ratelimit
-			if resp.StatusCode == 429 {
-				fmt.Println("\033[31m", " [-] Ratelimit! [Try adding more WLIDs or waiting for the ratelimit to finish]")
-				time.Sleep(5 * time.Second)
-			} else
+var json_content map[string]interface{}
+json.Unmarshal(content, &json_content)
 
-			// Checking response
-			{
-				if err1 != nil || err2 != nil || err3 != nil {
-					fmt.Println("\033[31m", " [-] Error: ", err1, err2, err3)
-				} else if strings.Contains(string(content), "tokenState") {
-					tknstate := json_content["tokenState"].(string)
-					if string(tknstate) == "Active" {
-						fmt.Println("\033[32m", " [+] "+codes[0][0:17]+"-XXXXX-XXXXX is valid!")
-						f, _ := os.OpenFile("output\\working.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-						defer f.Close()
-						f.WriteString(codes[0] + "\n")
-					} else if string(tknstate) == "Redeemed" {
-						fmt.Println("\033[31m", " [-] "+codes[0][0:17]+"-XXXXX-XXXXX is used!")
-						f, _ := os.OpenFile("output\\used.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-						defer f.Close()
-						f.WriteString(codes[0] + "\n")
-					}
-				} else if json_content["code"] != "undefined" {
-					if json_content["code"] == "NotFound" {
-						fmt.Println("\033[31m", " [-] "+codes[0][0:17]+"-XXXXX-XXXXX is invalid!")
-						f, _ := os.OpenFile("output\\invalid.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-						defer f.Close()
-						f.WriteString(codes[0] + "\n")
-					} else if json_content["code"] == "Unauthorized" {
-						fmt.Println("\033[31m", " [-] Error: Invalid WLID")
-						time.Sleep(5 * time.Second)
-						os.Exit(1)
-					}
-				} else {
-					fmt.Println("\033[31m", " [-] Error: "+string(content))
-				}
+// Defaults
+productName := "Unknown Product"
+description := ""
+offerId := ""
 
-				// Remove code from slice
-				codes = codes[1:]
+// Safe extraction
+if val, ok := json_content["productName"].(string); ok {
+	productName = val
+}
+if val, ok := json_content["description"].(string); ok {
+	description = val
+}
+if val, ok := json_content["offerId"].(string); ok {
+	offerId = val
+}
+
+// Checking for ratelimit
+if resp.StatusCode == 429 {
+	fmt.Println("\033[31m", " [-] Ratelimit! [Try adding more WLIDs or waiting]")
+	time.Sleep(5 * time.Second)
+} else if err1 != nil || err2 != nil || err3 != nil {
+	fmt.Println("\033[31m", " [-] Error:", err1, err2, err3)
+} else {
+
+	// tokenState handling
+	if state, ok := json_content["tokenState"].(string); ok {
+
+		if state == "Active" {
+			displayName := productName
+			if displayName == "Unknown Product" && description != "" {
+				displayName = description
+			}
+
+			fmt.Println("\033[32m", " [+] "+codes[0][0:17]+"-XXXXX-XXXXX | "+displayName)
+
+			f, _ := os.OpenFile("output\\working.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			f.WriteString(codes[0] + " | " + displayName + " | " + offerId + "\n")
+			f.Close()
+
+		} else if state == "Redeemed" {
+			fmt.Println("\033[31m", " [-] "+codes[0][0:17]+"-XXXXX-XXXXX is used!")
+			f, _ := os.OpenFile("output\\used.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			f.WriteString(codes[0] + "\n")
+			f.Close()
+		}
+
+	} else if code, ok := json_content["code"].(string); ok {
+
+		if code == "NotFound" {
+			fmt.Println("\033[31m", " [-] "+codes[0][0:17]+"-XXXXX-XXXXX is invalid!")
+			f, _ := os.OpenFile("output\\invalid.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			f.WriteString(codes[0] + "\n")
+			f.Close()
+
+		} else if code == "Unauthorized" {
+			fmt.Println("\033[31m", " [-] Error: Invalid WLID")
+			time.Sleep(5 * time.Second)
+			os.Exit(1)
+		}
+
+	} else {
+		fmt.Println("\033[31m", " [-] Unknown response:", string(content))
+	}
+}
+
+// Remove code from slice
+codes = codes[1:]
+
 
 			}
 		}
